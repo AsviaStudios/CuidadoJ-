@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CuidadoJá - Profissionais da Saúde em Domicílio</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col" x-data="appState()">
+
+    <!-- Toast Notifications -->
+    <div class="fixed top-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none">
+        <template x-for="toast in toasts" :key="toast.id">
+            <div class="pointer-events-auto flex items-center gap-3 p-4 rounded-xl shadow-lg border transition-all duration-300 bg-white"
+                 :class="{
+                    'border-emerald-200 text-emerald-900 bg-emerald-50': toast.type === 'success',
+                    'border-rose-200 text-rose-900 bg-rose-50': toast.type === 'error',
+                    'border-teal-200 text-teal-900 bg-teal-50': toast.type === 'info'
+                 }">
+                <div class="shrink-0">
+                    <template x-if="toast.type === 'success'"><i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-600"></i></template>
+                    <template x-if="toast.type === 'error'"><i data-lucide="alert-circle" class="w-5 h-5 text-rose-600"></i></template>
+                    <template x-if="toast.type === 'info'"><i data-lucide="info" class="w-5 h-5 text-teal-600"></i></template>
+                </div>
+                <div class="flex-1 text-sm font-medium" x-text="toast.message"></div>
+                <button @click="removeToast(toast.id)" class="shrink-0 text-slate-400 hover:text-slate-600">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </template>
+    </div>
+
+    <!-- 1. SPLASH SCREEN -->
+    <div x-show="currentView === 'splash'" 
+         x-transition:leave="transition ease-in duration-500 opacity-0"
+         class="fixed inset-0 z-50 bg-gradient-to-br from-teal-700 via-teal-800 to-slate-900 flex flex-col items-center justify-center text-white p-6">
+        <div class="relative flex items-center justify-center w-24 h-24 mb-6 bg-white/10 rounded-3xl backdrop-blur-md border border-white/20 shadow-2xl animate-pulse">
+            <i data-lucide="heart-pulse" class="w-12 h-12 text-teal-300"></i>
+            <div class="absolute -bottom-1 -right-1 bg-emerald-500 w-6 h-6 rounded-full flex items-center justify-center border-2 border-teal-900">
+                <i data-lucide="shield-check" class="w-3.5 h-3.5 text-white"></i>
+            </div>
+        </div>
+        <h1 class="text-3xl font-bold tracking-tight mb-2">CuidadoJá</h1>
+        <p class="text-teal-200 text-sm max-w-xs text-center mb-8">Profissionais de saúde qualificados na sua porta com total segurança.</p>
+        <div class="w-48 h-1.5 bg-white/20 rounded-full overflow-hidden">
+            <div class="h-full bg-teal-300 rounded-full animate-[loading_2s_ease-in-out_infinite]" style="width: 60%"></div>
+        </div>
+    </div>
+
+    <!-- 2. AUTHENTICATION & ROLE SELECTION -->
+    <div x-show="currentView === 'auth'" x-cloak class="flex-1 flex items-center justify-center p-4 sm:p-6 bg-gradient-to-br from-teal-50 via-slate-100 to-teal-100">
+        <div class="max-w-md w-full bg-white rounded-3xl shadow-xl border border-slate-200/80 p-8">
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center justify-center w-14 h-14 bg-teal-100 text-teal-700 rounded-2xl mb-3 shadow-inner">
+                    <i data-lucide="activity" class="w-7 h-7"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-slate-900">Bem-vindo ao CuidadoJá</h2>
+                <p class="text-sm text-slate-500 mt-1">Conectando você aos melhores profissionais de saúde</p>
+            </div>
+
+            <!-- Role Selector -->
+            <div class="grid grid-cols-2 gap-3 p-1 bg-slate-100 rounded-2xl mb-6">
+                <button @click="authForm.role = 'client'" 
+                        :class="authForm.role === 'client' ? 'bg-white text-teal-800 shadow-sm font-semibold' : 'text-slate-600 hover:text-slate-900'"
+                        class="py-2.5 rounded-xl text-sm transition-all flex items-center justify-center gap-2">
+                    <i data-lucide="user" class="w-4 h-4"></i> Cliente / Família
+                </button>
+                <button @click="authForm.role = 'professional'" 
+                        :class="authForm.role === 'professional' ? 'bg-white text-teal-800 shadow-sm font-semibold' : 'text-slate-600 hover:text-slate-900'"
+                        class="py-2.5 rounded-xl text-sm transition-all flex items-center justify-center gap-2">
+                    <i data-lucide="stethoscope" class="w-4 h-4"></i> Profissional
+                </button>
+            </div>
+
+            <form @submit.prevent="handleAuth" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">E-mail</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                            <i data-lucide="mail" class="w-4 h-4"></i>
+                        </span>
+                        <input type="email" x-model="authForm.email" required
+                               placeholder="seu@email.com"
+                               class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 transition-all">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Senha</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                            <i data-lucide="lock" class="w-4 h-4"></i>
+                        </span>
+                        <input type="password" x-model="authForm.password" required
+                               placeholder="••••••••"
+                               class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 transition-all">
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full py-3.5 bg-teal-700 hover:bg-teal-800 text-white font-semibold rounded-xl shadow-lg shadow-teal-700/20 transition-all flex items-center justify-center gap-2">
+                    <span>Entrar / Cadastrar</span>
+                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </button>
+            </form>
+
+            <div class="mt-6 pt-6 border-t border-slate-100 text-center">
+                <p class="text-xs text-slate-500 mb-3">Atalho rápido para demonstração:</p>
+                <div class="flex gap-2 justify-center">
+                    <button @click="fillDemo('client')" class="px-3 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-lg text-xs font-medium border border-teal-200 transition-all">
+                        Demo Cliente
+                    </button>
+                    <button @click="fillDemo('professional')" class="px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-medium border border-emerald-200 transition-all">
+                        Demo Profissional
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. MAIN APPLICATION (CLIENT & PROFESSIONAL PORTALS) -->
+    <div x-show="currentView === 'app'" x-cloak class="flex-1 flex flex-col bg-slate-50">
+        <!-- Top Navigation Bar -->
+        <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-teal-700 rounded-xl flex items-center justify-center text-white shadow-md shadow-teal-700/20">
+                        <i data-lucide="heart-pulse" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <span class="font-bold text-lg text-slate-900 tracking-tight">CuidadoJá</span>
+                        <span class="text-xs block text-slate-500 font-medium" x-text="currentUser.role === 'client' ? 'Portal do Cliente' : 'Portal do Profissional'"></span>
+                    </div>
+                </div>
+
+                <!-- Role Switcher & User profile info -->
+                <div class="flex items-center gap-3">
+                    <div class="hidden sm:flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span class="text-xs font-medium text-slate-700" x-text="currentUser.email"></span>
+                    </div>
+
+                    <button @click="switchRole()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 border border-slate-200">
+                        <i data-lucide="repeat" class="w-3.5 h-3.5"></i>
+                        <span x-text="currentUser.role === 'client' ? 'Mudar p/ Profissional' : 'Mudar p/ Cliente'"></span>
+                    </button>
+
+                    <button @click="logout()" class="p-2 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition-all" title="Sair">
+                        <i data-lucide="log-out" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- ================= CLIENT PORTAL ================= -->
+        <main x-show="currentUser.role === 'client'" class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- Client Navigation Tabs -->
+            <div class="flex border-b border-slate-200 mb-8 gap-8 overflow-x-auto">
+                <button @click="clientTab = 'explore'" 
+                        :class="clientTab === 'explore' ? 'border-teal-600 text-teal-700 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-800'"
+                        class="pb-3 border-b-2 text-sm transition-all flex items-center gap-2 shrink-0">
+                    <i data-lucide="search" class="w-4 h-4"></i> Buscar Profissionais
+                </button>
+                <button @click="clientTab = 'appointments'" 
+                        :class="clientTab === 'appointments' ? 'border-teal-600 text-teal-700 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-800'"
+                        class="pb-3 border-b-2 text-sm transition-all flex items-center gap-2 shrink-0">
+                    <i data-lucide="calendar" class="w-4 h-4"></i> Meus Agendamentos
+                    <span x-show="clientAppointments.length > 0" class="ml-1 px-2 py-0.5 bg-teal-100 text-teal-800 text-xs rounded-full font-bold" x-text="clientAppointments.length"></span>
+                </button>
+            </div>
+
+            <!-- TAB 1: EXPLORE & SEARCH PROFESSIONALS -->
+            <div x-show="clientTab === 'explore'" class="space-y-6">
+                <!-- Filters Bar -->
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Especialidade</label>
+                        <select x-model="filters.specialty" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600">
+                            <option value="">Todas as especialidades</option>
+                            <option value="Enfermeiro(a)">Enfermeiro(a)</option>
+                            <option value="Técnico de Enfermagem">Técnico de Enfermagem</option>
+                            <option value="Cuidador(a) de Idosos">Cuidador(a) de Idosos</option>
+                            <option value="Flebotomista">Flebotomista</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Cidade / Bairro (Pernambuco)</label>
+                        <select x-model="filters.neighborhood" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600">
+                            <option value="">Todas as localidades (PE)</option>
+                            <optgroup label="Região Metropolitana do Recife">
+                                <option value="Recife - Boa Viagem">Recife - Boa Viagem</option>
+                                <option value="Recife - Casa Amarela">Recife - Casa Amarela</option>
+                                <option value="Recife - Derby">Recife - Derby</option>
+                                <option value="Recife - Madalena">Recife - Madalena</option>
+                                <option value="Olinda - Bairro Novo">Olinda - Bairro Novo</option>
+                                <option value="Olinda - Carmo">Olinda - Carmo</option>
+                                <option value="Jaboatão dos Guararapes - Piedade">Jaboatão dos Guararapes - Piedade</option>
+                                <option value="Paulista - Janga">Paulista - Janga</option>
+                            </optgroup>
+                            <optgroup label="Interior de Pernambuco">
+                                <option value="Caruaru - Maurício de Nassau">Caruaru - Maurício de Nassau</option>
+                                <option value="Petrolina - Centro">Petrolina - Centro</option>
+                                <option value="Garanhuns - Heliópolis">Garanhuns - Heliópolis</option>
+                                <option value="Vitória de Santo Antão - Centro">Vitória de Santo Antão - Centro</option>
+                                <option value="Serra Talhada - Centro">Serra Talhada - Centro</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <div class="flex items-end">
+                        <button @click="resetFilters()" class="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-semibold transition-all">
+                            Limpar Filtros
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Professionals Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <template x-for="pro in filteredProfessionals" :key="pro.id">
+                        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all p-6 flex flex-col justify-between">
+                            <div>
+                                <div class="flex items-start gap-4 mb-4">
+                                    <img :src="pro.photo" alt="Foto" class="w-16 h-16 rounded-2xl object-cover border-2 border-teal-100 shadow-inner">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-1.5">
+                                            <h3 class="font-bold text-slate-900 text-base" x-text="pro.name"></h3>
+                                            <span class="text-teal-600" title="Perfil Verificado"><i data-lucide="badge-check" class="w-4 h-4 fill-teal-100"></i></span>
+                                        </div>
+                                        <p class="text-xs font-medium text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md inline-block mt-1" x-text="pro.specialty"></p>
+                                        <p class="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                                            <i data-lucide="map-pin" class="w-3.5 h-3.5 text-slate-400"></i> <span x-text="pro.neighborhood"></span>
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div class="space-y-2 mb-6 bg-slate-50 p-3.5 rounded-2xl text-xs text-slate-600 border border-slate-100">
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-500">Experiência:</span>
+                                        <span class="font-semibold text-slate-800" x-text="pro.experienceYears + ' anos na área'"></span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-slate-500">Documento:</span>
+                                        <span class="font-semibold text-emerald-700 flex items-center gap-1">
+                                            <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Verificado (COREN/Diploma)
+                                        </span>
+                                    </div>
+                                    <div class="flex justify-between items-center pt-1 border-t border-slate-200">
+                                        <span class="text-slate-500">Valor sugerido:</span>
+                                        <span class="text-base font-bold text-teal-800" x-text="'R$ ' + pro.baseRate.toFixed(2)"></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button @click="openBookingModal(pro)" class="w-full py-3 bg-teal-700 hover:bg-teal-800 text-white rounded-xl font-semibold text-sm shadow-md shadow-teal-700/20 transition-all flex items-center justify-center gap-2">
+                                <i data-lucide="calendar-plus" class="w-4 h-4"></i> Agendar Serviço
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- TAB 2: CLIENT APPOINTMENTS & ESCROW -->
+            <div x-show="clientTab === 'appointments'" class="space-y-4">
+                <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm mb-6 flex items-center gap-4">
+                    <div class="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center shrink-0">
+                        <i data-lucide="lock" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-slate-900">Segurança de Pagamento (Escrow)</h4>
+                        <p class="text-xs text-slate-500 mt-0.5">O pagamento fica retido com segurança no aplicativo e só é liberado para o profissional após a conclusão do turno e check-out confirmado.</p>
+                    </div>
+                </div>
+
+                <template x-if="clientAppointments.length === 0">
+                    <div class="text-center py-16 bg-white rounded-3xl border border-slate-200 p-8">
+                        <i data-lucide="calendar-x" class="w-12 h-12 text-slate-300 mx-auto mb-3"></i>
+                        <h4 class="font-semibold text-slate-800">Nenhum agendamento ativo</h4>
+                        <p class="text-xs text-slate-500 mt-1">Explore os profissionais disponíveis e faça sua primeira solicitação.</p>
+                    </div>
+                </template>
+
+                <div class="space-y-4">
+                    <template x-for="appt in clientAppointments" :key="appt.id">
+                        <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                            <div class="space-y-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="px-2.5 py-1 rounded-lg text-xs font-bold"
+                                          :class="{
+                                              'bg-amber-100 text-amber-800': appt.status === 'pending' || appt.status === 'negotiating',
+                                              'bg-teal-100 text-teal-800': appt.status === 'confirmed',
+                                              'bg-blue-100 text-blue-800 animate-pulse': appt.status === 'in_progress',
+                                              'bg-emerald-100 text-emerald-800': appt.status === 'completed',
+                                              'bg-rose-100 text-rose-800': appt.status === 'rejected'
+                                          }"
+                                          x-text="getStatusText(appt.status)"></span>
+                                    <span class="text-xs font-medium text-slate-400" x-text="'ID: #' + appt.id"></span>
+                                </div>
+                                <h3 class="font-bold text-slate-900 text-lg" x-text="appt.professionalName"></h3>
+                                <p class="text-xs text-slate-600 flex items-center gap-3">
+                                    <span class="flex items-center gap-1"><i data-lucide="calendar" class="w-3.5 h-3.5 text-slate-400"></i> <span x-text="appt.date"></span></span>
+                                    <span class="flex items-center gap-1"><i data-lucide="clock" class="w-3.5 h-3.5 text-slate-400"></i> <span x-text="appt.time"></span></span>
+                                    <span class="flex items-center gap-1 font-semibold text-teal-700"><i data-lucide="tag" class="w-3.5 h-3.5 text-teal-500"></i> <span x-text="'R$ ' + appt.agreedRate.toFixed(2)"></span></span>
+                                </p>
+                                <template x-if="appt.status === 'negotiating'">
+                                    <p class="text-xs text-amber-700 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">
+                                        <span class="font-semibold">Contraproposta do Profissional:</span> R$ <span x-text="appt.counterRate.toFixed(2)"></span>. Aceite ou recuse abaixo.
+                                    </p>
+                                </template>
+                            </div>
+
+                            <!-- Actions -->
+                            <div class="flex items-center gap-2 w-full md:w-auto">
+                                <template x-if="appt.status === 'negotiating'">
+                                    <div class="flex gap-2 w-full md:w-auto">
+                                        <button @click="acceptCounterOffer(appt)" class="flex-1 md:flex-none px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-all">
+                                            Aceitar R$ <span x-text="appt.counterRate.toFixed(2)"></span>
+                                        </button>
+                                        <button @click="rejectBooking(appt)" class="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-semibold transition-all">
+                                            Recusar
+                                        </button>
+                                    </div>
+                                </template>
+
+                                <template x-if="appt.status === 'confirmed'">
+                                    <div class="text-xs text-slate-500 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
+                                        Aguardando Check-in do profissional...
+                                    </div>
+                                </template>
+
+                                <template x-if="appt.status === 'in_progress'">
+                                    <div class="flex flex-col items-end gap-2 w-full md:w-auto">
+                                        <span class="text-xs font-bold text-blue-700 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-200 flex items-center gap-1.5">
+                                            <i data-lucide="play-circle" class="w-4 h-4 animate-spin"></i> Turno em Andamento (Check-in realizado)
+                                        </span>
+                                        <p class="text-[11px] text-slate-400">O profissional está prestando o serviço.</p>
+                                    </div>
+                                </template>
+
+                                <template x-if="appt.status === 'completed'">
+                                    <div class="flex items-center gap-2 text-xs font-semibold text-emerald-700 bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-200">
+                                        <i data-lucide="check-circle" class="w-4 h-4"></i> Serviço Finalizado & Pagamento Liberado
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </main>
+
+        <!-- ================= PROFESSIONAL PORTAL ================= -->
+        <main x-show="currentUser.role === 'professional'" class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- Professional Navigation Tabs -->
+            <div class="flex border-b border-slate-200 mb-8 gap-8 overflow-x-auto">
+                <button @click="proTab = 'requests'" 
+                        :class="proTab === 'requests' ? 'border-teal-600 text-teal-700 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-800'"
+                        class="pb-3 border-b-2 text-sm transition-all flex items-center gap-2 shrink-0">
+                    <i data-lucide="clipboard-list" class="w-4 h-4"></i> Solicitações & Turnos
+                    <span x-show="pendingRequestsCount > 0" class="ml-1 px-2 py-0.5 bg-rose-100 text-rose-800 text-xs rounded-full font-bold" x-text="pendingRequestsCount"></span>
+                </button>
+                <button @click="proTab = 'verification'" 
+                        :class="proTab === 'verification' ? 'border-teal-600 text-teal-700 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-800'"
+                        class="pb-3 border-b-2 text-sm transition-all flex items-center gap-2 shrink-0">
+                    <i data-lucide="shield-check" class="w-4 h-4"></i> Documentos & Perfil
+                </button>
+                <button @click="proTab = 'wallet'" 
+                        :class="proTab === 'wallet' ? 'border-teal-600 text-teal-700 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-800'"
+                        class="pb-3 border-b-2 text-sm transition-all flex items-center gap-2 shrink-0">
+                    <i data-lucide="wallet" class="w-4 h-4"></i> Minha Carteira
+                </button>
+            </div>
+
+            <!-- TAB 1: REQUESTS & SHIFT (CHECK-IN / CHECK-OUT) -->
+            <div x-show="proTab === 'requests'" class="space-y-6">
+                <!-- Shift Control Center -->
+                <div class="bg-gradient-to-br from-teal-800 to-slate-900 text-white p-6 sm:p-8 rounded-3xl shadow-xl border border-teal-700/50 flex flex-col md:flex-row justify-between items-center gap-6">
+                    <div>
+                        <div class="flex items-center gap-2 text-teal-300 text-xs font-semibold uppercase tracking-wider mb-1">
+                            <i data-lucide="clock" class="w-4 h-4"></i> Controle de Turno (Check-in / Check-out)
+                        </div>
+                        <h3 class="text-2xl font-bold">Gerenciamento de Plantão</h3>
+                        <p class="text-teal-100 text-sm mt-1 max-w-lg">Inicie o turno com o Check-in ao chegar no cliente e encerre com o Check-out ao finalizar. O pagamento em escrow será liberado automaticamente.</p>
+                    </div>
+
+                    <!-- Active Shift Actions -->
+                    <div class="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                        <template x-for="appt in activeShiftAppointments" :key="appt.id">
+                            <div class="flex flex-col gap-2 bg-white/10 p-4 rounded-2xl backdrop-blur-md border border-white/20 w-full md:w-80">
+                                <span class="text-xs font-medium text-teal-200" x-text="'Cliente: ' + appt.clientName"></span>
+                                <div class="flex gap-2">
+                                    <button x-show="appt.status === 'confirmed'" @click="doCheckIn(appt)" class="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 shadow-md">
+                                        <i data-lucide="log-in" class="w-4 h-4"></i> Fazer Check-in
+                                    </button>
+                                    <button x-show="appt.status === 'in_progress'" @click="doCheckOut(appt)" class="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 shadow-md">
+                                        <i data-lucide="log-out" class="w-4 h-4"></i> Fazer Check-out
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                        <template x-if="activeShiftAppointments.length === 0">
+                            <div class="text-xs text-teal-200 bg-white/5 px-4 py-3 rounded-xl border border-white/10">
+                                Nenhum plantão confirmado aguardando check-in no momento.
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Incoming Booking Requests -->
+                <div>
+                    <h3 class="text-lg font-bold text-slate-900 mb-4">Solicitações de Serviços Recebidas</h3>
+                    <template x-if="proAppointments.length === 0">
+                        <div class="text-center py-16 bg-white rounded-3xl border border-slate-200 p-8">
+                            <i data-lucide="inbox" class="w-12 h-12 text-slate-300 mx-auto mb-3"></i>
+                            <h4 class="font-semibold text-slate-800">Nenhuma solicitação no momento</h4>
+                            <p class="text-xs text-slate-500 mt-1">Seu perfil está ativo para receber chamados na região.</p>
+                        </div>
+                    </template>
+
+                    <div class="space-y-4">
+                        <template x-for="appt in proAppointments" :key="appt.id">
+                            <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                <div class="space-y-1">
+                                    <div class="flex items-center gap-2">
+                                        <span class="px-2.5 py-1 rounded-lg text-xs font-bold"
+                                              :class="{
+                                                  'bg-amber-100 text-amber-800': appt.status === 'pending',
+                                                  'bg-teal-100 text-teal-800': appt.status === 'confirmed',
+                                                  'bg-blue-100 text-blue-800': appt.status === 'in_progress',
+                                                  'bg-emerald-100 text-emerald-800': appt.status === 'completed',
+                                                  'bg-rose-100 text-rose-800': appt.status === 'rejected'
+                                              }"
+                                              x-text="getStatusText(appt.status)"></span>
+                                        <span class="text-xs font-medium text-slate-400" x-text="appt.date + ' às ' + appt.time"></span>
+                                    </div>
+                                    <h4 class="font-bold text-slate-900 text-base" x-text="appt.clientName"></h4>
+                                    <p class="text-xs font-semibold text-teal-700">Valor proposto pelo cliente: R$ <span x-text="appt.agreedRate.toFixed(2)"></span></p>
+                                </div>
+
+                                <!-- Action Buttons for Professional -->
+                                <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                                    <template x-if="appt.status === 'pending'">
+                                        <div class="flex gap-2 w-full md:w-auto">
+                                            <button @click="acceptBooking(appt)" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-all">
+                                                Aceitar Valor
+                                            </button>
+                                            <button @click="openCounterModal(appt)" class="px-4 py-2 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-xl text-xs font-semibold transition-all">
+                                                Sugerir Outro Valor
+                                            </button>
+                                            <button @click="rejectBooking(appt)" class="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-semibold transition-all">
+                                                Recusar
+                                            </button>
+                                        </div>
+                                    </template>
+                                    <template x-if="appt.status === 'confirmed' || appt.status === 'in_progress'">
+                                        <span class="text-xs font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-xl">
+                                            Plantão Agendado / Em Andamento
+                                        </span>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: VERIFICATION & DOCUMENTS -->
+            <div x-show="proTab === 'verification'" class="space-y-6 max-w-2xl mx-auto">
+                <div class="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+                    <div>
+                        <h3 class="text-xl font-bold text-slate-900">Verificação de Documentos & Perfil</h3>
+                        <p class="text-xs text-slate-500 mt-1">Envie seus certificados profissionais para garantir o selo de verificação em Pernambuco.</p>
+                    </div>
+
+                    <form @submit.prevent="saveProfile" class="space-y-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Nome Completo</label>
+                                <input type="text" x-model="proProfile.name" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" required>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Especialidade</label>
+                                <select x-model="proProfile.specialty" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                                    <option value="Enfermeiro(a)">Enfermeiro(a)</option>
+                                    <option value="Técnico de Enfermagem">Técnico de Enfermagem</option>
+                                    <option value="Cuidador(a) de Idosos">Cuidador(a) de Idosos</option>
+                                    <option value="Flebotomista">Flebotomista</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Cidade / Bairro (PE)</label>
+                                <select x-model="proProfile.neighborhood" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                                    <optgroup label="Região Metropolitana do Recife">
+                                        <option value="Recife - Boa Viagem">Recife - Boa Viagem</option>
+                                        <option value="Recife - Casa Amarela">Recife - Casa Amarela</option>
+                                        <option value="Recife - Derby">Recife - Derby</option>
+                                        <option value="Recife - Madalena">Recife - Madalena</option>
+                                        <option value="Olinda - Bairro Novo">Olinda - Bairro Novo</option>
+                                        <option value="Olinda - Carmo">Olinda - Carmo</option>
+                                        <option value="Jaboatão dos Guararapes - Piedade">Jaboatão dos Guararapes - Piedade</option>
+                                        <option value="Paulista - Janga">Paulista - Janga</option>
+                                    </optgroup>
+                                    <optgroup label="Interior de Pernambuco">
+                                        <option value="Caruaru - Maurício de Nassau">Caruaru - Maurício de Nassau</option>
+                                        <option value="Petrolina - Centro">Petrolina - Centro</option>
+                                        <option value="Garanhuns - Heliópolis">Garanhuns - Heliópolis</option>
+                                        <option value="Vitória de Santo Antão - Centro">Vitória de Santo Antão - Centro</option>
+                                        <option value="Serra Talhada - Centro">Serra Talhada - Centro</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Anos de Experiência</label>
+                                <input type="number" x-model.number="proProfile.experienceYears" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" required>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Valor Base por Turno (R$)</label>
+                            <input type="number" x-model.number="proProfile.baseRate" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" required>
+                        </div>
+
+                        <div class="p-4 bg-teal-50 rounded-2xl border border-teal-200 space-y-2">
+                            <label class="block text-xs font-bold text-teal-900 uppercase tracking-wider">Documentos Comprobatórios (COREN PE / Diploma / Experiência)</label>
+                            <input type="file" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-teal-700 file:text-white hover:file:bg-teal-800 cursor-pointer">
+                            <p class="text-[11px] text-teal-700">Envie foto do COREN PE ativo, certificado de cuidador ou comprovante de tempo de trabalho.</p>
+                        </div>
+
+                        <button type="submit" class="w-full py-3.5 bg-teal-700 hover:bg-teal-800 text-white font-semibold rounded-xl shadow-md transition-all">
+                            Salvar Alterações e Atualizar Perfil
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- TAB 3: WALLET -->
+<!-- ... --><script>
+        document.addEventListener('alpine:init', () => {
+            lucide.createIcons();
+        });
+
+        function appState() {
+            return {
+                currentView: 'splash', // splash -> auth -> app
+                authForm: {
+                    email: '',
+                    password: '',
+                    role: 'client'
+                },
+                currentUser: {
+                    email: 'cliente@cuidadoja.com',
+                    role: 'client'
+                },
+                clientTab: 'explore',
+                proTab: 'requests',
+                toasts: [],
+                
+                filters: {
+                    specialty: '',
+                    neighborhood: ''
+                },
+
+                showBookingModal: false,
+                selectedPro: null,
+                bookingForm: {
+                    date: '2026-06-15',
+                    time: '08:00',
+                    proposedRate: 150
+                },
+
+                showCounterModal: false,
+                activeApptForCounter: null,
+                counterRateInput: 180,
+
+                // Initial Mock Professionals across Pernambuco (Recife RMR and Interior)
+                professionals: [
+                    {
+                        id: 1,
+                        name: 'Ana Paula Souza',
+                        specialty: 'Enfermeiro(a)',
+                        neighborhood: 'Recife - Boa Viagem',
+                        experienceYears: 8,
+                        baseRate: 180,
+                        photo: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=150&auto=format&fit=crop&q=80'
+                    },
+                    {
+                        id: 2,
+                        name: 'Carlos Eduardo Lima',
+                        specialty: 'Técnico de Enfermagem',
+                        neighborhood: 'Olinda - Bairro Novo',
+                        experienceYears: 5,
+                        baseRate: 120,
+                        photo: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150&auto=format&fit=crop&q=80'
+                    },
+                    {
+                        id: 3,
+                        name: 'Mariana Ribeiro',
+                        specialty: 'Cuidador(a) de Idosos',
+                        neighborhood: 'Caruaru - Maurício de Nassau',
+                        experienceYears: 10,
+                        baseRate: 100,
+                        photo: 'https://images.unsplash.com/photo-1594824813593-94c4897255f0?w=150&auto=format&fit=crop&q=80'
+                    },
+                    {
+                        id: 4,
+                        name: 'Julio César Mendes',
+                        specialty: 'Flebotomista',
+                        neighborhood: 'Petrolina - Centro',
+                        experienceYears: 6,
+                        baseRate: 140,
+                        photo: 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=150&auto=format&fit=crop&q=80'
+                    }
+                ],
+
+                proProfile: {
+                    name: 'Ana Paula Souza',
+                    specialty: 'Enfermeiro(a)',
+                    neighborhood: 'Recife - Boa Viagem',
+                    experienceYears: 8,
+                    baseRate: 180
+                },
+
+                // Mock Appointments
+                appointments: [
+                    {
+                        id: 101,
+                        professionalId: 1,
+                        professionalName: 'Ana Paula Souza',
+                        clientName: 'Família Silva',
+                        date: '2026-06-12',
+                        time: '07:00',
+                        agreedRate: 180,
+                        status: 'confirmed',
+                        counterRate: 0
+                    }
+                ],
+
+                init() {
+                    // Splash screen timer
+                    setTimeout(() => {
+                        this.currentView = 'auth';
+                        this.$nextTick(() => lucide.createIcons());
+                    }, 2200);
+                },
+
+                showToast(message, type = 'success') {
+                    const id = Date.now();
+                    this.toasts.push({ id, message, type });
+                    setTimeout(() => {
+                        this.removeToast(id);
+                    }, 4000);
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                removeToast(id) {
+                    this.toasts = this.toasts.filter(t => t.id !== id);
+                },
+
+                fillDemo(role) {
+                    if (role === 'client') {
+                        this.authForm.email = 'cliente@cuidadoja.com';
+                        this.authForm.password = '123456';
+                        this.authForm.role = 'client';
+                    } else {
+                        this.authForm.email = 'enfermeira.ana@cuidadoja.com';
+                        this.authForm.password = '123456';
+                        this.authForm.role = 'professional';
+                    }
+                },
+
+                handleAuth() {
+                    this.currentUser = {
+                        email: this.authForm.email,
+                        role: this.authForm.role
+                    };
+                    this.currentView = 'app';
+                    this.showToast(`Bem-vindo, ${this.currentUser.email}!`, 'success');
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                switchRole() {
+                    if (this.currentUser.role === 'client') {
+                        this.currentUser.role = 'professional';
+                        this.currentUser.email = 'enfermeira.ana@cuidadoja.com';
+                        this.showToast('Alternado para o Portal do Profissional', 'info');
+                    } else {
+                        this.currentUser.role = 'client';
+                        this.currentUser.email = 'cliente@cuidadoja.com';
+                        this.showToast('Alternado para o Portal do Cliente', 'info');
+                    }
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                logout() {
+                    this.currentView = 'auth';
+                    this.showToast('Sessão encerrada com sucesso.', 'info');
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                resetFilters() {
+                    this.filters.specialty = '';
+                    this.filters.neighborhood = '';
+                },
+
+                get filteredProfessionals() {
+                    return this.professionals.filter(p => {
+                        const matchSpec = !this.filters.specialty || p.specialty === this.filters.specialty;
+                        const matchNeigh = !this.filters.neighborhood || p.neighborhood === this.filters.neighborhood;
+                        return matchSpec && matchNeigh;
+                    });
+                },
+
+                openBookingModal(pro) {
+                    this.selectedPro = pro;
+                    this.bookingForm.proposedRate = pro.baseRate;
+                    this.showBookingModal = true;
+                },
+
+                submitBooking() {
+                    const newAppt = {
+                        id: Math.floor(100 + Math.random() * 900),
+                        professionalId: this.selectedPro.id,
+                        professionalName: this.selectedPro.name,
+                        clientName: 'Família Cliente (Você)',
+                        date: this.bookingForm.date,
+                        time: this.bookingForm.time,
+                        agreedRate: this.bookingForm.proposedRate,
+                        status: 'pending',
+                        counterRate: 0
+                    };
+                    this.appointments.unshift(newAppt);
+                    this.showBookingModal = false;
+                    this.showToast('Solicitação enviada! Pagamento retido em escrow de segurança.', 'success');
+                    this.clientTab = 'appointments';
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                get clientAppointments() {
+                    return this.appointments;
+                },
+
+                get proAppointments() {
+                    return this.appointments;
+                },
+
+                get activeShiftAppointments() {
+                    return this.appointments.filter(a => a.status === 'confirmed' || a.status === 'in_progress');
+                },
+
+                get pendingRequestsCount() {
+                    return this.appointments.filter(a => a.status === 'pending').length;
+                },
+
+                get completedEarnings() {
+                    return this.appointments.filter(a => a.status === 'completed');
+                },
+
+                get totalEarnings() {
+                    return this.completedEarnings.reduce((acc, curr) => acc + curr.agreedRate, 0);
+                },
+
+                getStatusText(status) {
+                    switch(status) {
+                        case 'pending': return 'Pendente / Aguardando Resposta';
+                        case 'negotiating': return 'Negociação em Andamento';
+                        case 'confirmed': return 'Confirmado / Aguardando Check-in';
+                        case 'in_progress': return 'Turno em Andamento';
+                        case 'completed': return 'Finalizado & Pago';
+                        case 'rejected': return 'Recusado';
+                        default: return status;
+                    }
+                },
+
+                acceptBooking(appt) {
+                    appt.status = 'confirmed';
+                    this.showToast('Serviço aceito! Pronto para agendar check-in.', 'success');
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                rejectBooking(appt) {
+                    appt.status = 'rejected';
+                    this.showToast('Solicitação recusada.', 'error');
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                openCounterModal(appt) {
+                    this.activeApptForCounter = appt;
+                    this.counterRateInput = appt.agreedRate + 30;
+                    this.showCounterModal = true;
+                },
+
+                submitCounterOffer() {
+                    if (this.activeApptForCounter) {
+                        this.activeApptForCounter.counterRate = this.counterRateInput;
+                        this.activeApptForCounter.agreedRate = this.counterRateInput;
+                        this.activeApptForCounter.status = 'negotiating';
+                        this.showCounterModal = false;
+                        this.showToast('Contraproposta enviada ao cliente com sucesso!', 'info');
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                acceptCounterOffer(appt) {
+                    appt.status = 'confirmed';
+                    this.showToast('Contraproposta aceita! Serviço confirmado em escrow.', 'success');
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                doCheckIn(appt) {
+                    appt.status = 'in_progress';
+                    this.showToast('Check-in realizado com sucesso! Turno iniciado.', 'success');
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                doCheckOut(appt) {
+                    appt.status = 'completed';
+                    this.showToast('Check-out realizado! Pagamento liberado do escrow ao profissional (Taxa de 20% descontada automaticamente em background).', 'success');
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                saveProfile() {
+                    this.showToast('Perfil e documentos atualizados com sucesso!', 'success');
+                }
+            }
+        }
+    </script>
+</body>
+</html>
